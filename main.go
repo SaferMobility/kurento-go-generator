@@ -55,7 +55,7 @@ func (elem *{{.Name}}) getConstructorParams(from IMediaObject, options map[strin
 
 {{ range .Methods }}
 {{ .Doc }}{{ if .Return.doc }}
-// Returns: 
+// Returns:
 {{ .Return.doc }}{{ end }}
 func (elem *{{$name}}) {{ .Name | title }}({{ template "Arguments" .}}) ({{if .Return.type }}{{ .Return.type }}, {{ end }} error) {
 	req := elem.getInvokeRequest()
@@ -103,7 +103,7 @@ func (t {{.Name}}) String() string {
 }
 
 const (
-	{{ range .Values }}{{ $name | uppercase }}_{{ . }} {{ $name }} = "{{ . }}" 
+	{{ range .Values }}{{ $name | uppercase }}_{{ . }} {{ $name }} = "{{ . }}"
 	{{ end}}
 )
 {{ else }}
@@ -122,6 +122,7 @@ const packageTemplate = `package kurento
 const DOCLINELENGTH = 79
 
 var re = regexp.MustCompile(`(.+)\[\]`)
+var mapRe = regexp.MustCompile(`(.+)\<\>`)
 
 var CPXTYPES = make([]string, 0)
 
@@ -258,6 +259,10 @@ func formatTypes(p map[string]interface{}) map[string]interface{} {
 		p["type"] = "[]string"
 	}
 
+	if p["type"] == "String<>" {
+		p["type"] = "map[string]interface{}"
+	}
+
 	if p["type"] == "String" {
 		p["type"] = "string"
 	}
@@ -269,9 +274,18 @@ func formatTypes(p map[string]interface{}) map[string]interface{} {
 		p["type"] = "bool"
 	}
 
+	if p["type"] == "double" {
+		p["type"] = "float64"
+	}
+
 	if re.MatchString(p["type"].(string)) {
 		found := re.FindAllStringSubmatch(p["type"].(string), -1)
 		p["type"] = "[]" + found[0][1]
+	}
+
+	if mapRe.MatchString(p["type"].(string)) {
+		found := mapRe.FindAllStringSubmatch(p["type"].(string), -1)
+		p["type"] = "map[string]" + found[0][1]
 	}
 
 	if p["defaultValue"] == "" || p["defaultValue"] == nil {
@@ -317,6 +331,7 @@ func parse(c []class) []string {
 	for idx, cl := range c {
 
 		log.Println("Generating ", cl.Name)
+
 		// rewrite types
 		for j, p := range cl.Properties {
 			p = formatTypes(p)
@@ -380,7 +395,6 @@ func parseComplexTypes() {
 	for _, path := range paths {
 		ctypes := getModel(path).ComplexTypes
 		for _, ctype := range ctypes {
-
 			// Add in list
 			CPXTYPES = append(CPXTYPES, ctype.Name)
 
