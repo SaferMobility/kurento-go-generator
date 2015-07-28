@@ -40,7 +40,7 @@ func (elem *{{.Name}}) getConstructorParams(from IMediaObject, options map[strin
 	{{ if len .Constructor.Params }}
 	// Create basic constructor params
 	ret := map[string]interface{} {
-		{{ range .Constructor.Params }}{{ if eq .type "string" "float64" "boolean" "int" }}"{{ .name }}" : {{ .defaultValue }},
+		{{ range .Constructor.Params }}{{ if eq .type "string" "float64" "bool" "int" }}"{{ .name }}" : {{ .defaultValue }},
 		{{ else }} "{{ .name }}" : fmt.Sprintf("%s", from),
 		{{ end }}{{ end }}
 	}
@@ -65,18 +65,27 @@ func (elem *{{$name}}) {{ .Name | title }}({{ template "Arguments" .}}) ({{if .R
 	setIfNotEmpty(params, "{{.name}}", {{.name}}){{ end }}
 	{{ end }}
 
-	req["params"] = map[string]interface{}{
+	reqparams := map[string]interface{}{
 		"operation" : "{{ .Name }}",
 		"object"	: elem.Id,{{ if .Params }}
 		"operationParams" : params,
 		{{ end }}
 	}
+	if elem.connection.SessionId != "" {
+		reqparams["sessionId"] = elem.connection.SessionId
+	}
+	req["params"] = reqparams
 
 	// Call server and wait response
 	response := <- elem.connection.Request(req)
 	{{ if .Return}}
 	{{ .Return.doc }}
 		{{ if eq .Return.type "string" "int" "float64" "boolean" }}
+		if response.Error == nil {
+			return response.Result["value"], nil
+		} else {
+			return response.Result["value"], response.Error
+		}
 	return response.Result["value"], response.Error
 		{{ else }}{{/* More complicated but... let's go */}}
 	ret := {{ .Return.type }}{}
@@ -84,7 +93,11 @@ func (elem *{{$name}}) {{ .Name | title }}({{ template "Arguments" .}}) ({{if .R
 		{{ end }}
 	{{ else }}
 	// Returns error or nil
-	return response.Error
+	if response.Error != nil {
+		return response.Error
+	} else {
+		return nil
+	}
 	{{end}}
 
 }
@@ -111,6 +124,16 @@ const (
 type {{ .Name }} struct {
 	{{ range .Properties}}{{ .name | title }} {{ .type }}
 	{{ end }}
+}
+{{ end }}
+
+{{ if eq .Name "IceCandidate"}}
+func (t {{.Name}}) CustomSerialize() map[string]interface{} {
+	ret := make(map[string]interface{})
+	{{range .Properties}}
+	ret["{{.name}}"] = t.{{.name | title}}
+	{{end}}
+	return ret
 }
 {{ end }}
 `
