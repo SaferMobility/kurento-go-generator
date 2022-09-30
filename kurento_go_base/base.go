@@ -76,7 +76,7 @@ func (elem *MediaObject) Create(m IMediaObject, options map[string]interface{}) 
 		}
 	}
 
-	return res.Error
+	return fmt.Errorf("[%d] %s %s", res.Error.Code, res.Error.Message, res.Error.Data)
 }
 
 func (elem *MediaObject) Release() error {
@@ -94,12 +94,15 @@ func (elem *MediaObject) Release() error {
 		log.Println("Release response ", res)
 	}
 
-	return res.Error
+	if res.Error != nil {
+		return fmt.Errorf("[%d] %s %s", res.Error.Code, res.Error.Message, res.Error.Data)
+	}
+	return nil
 }
 
 type eventHandler func(map[string]interface{})
 
-func (elem *MediaObject) Subscribe(event string, cb eventHandler) (float64, error) {
+func (elem *MediaObject) Subscribe(event string, cb eventHandler) (string, error) {
 	// Make API call to register
 	req := elem.getSubscribeRequest()
 	reqparams := map[string]interface{}{
@@ -111,7 +114,7 @@ func (elem *MediaObject) Subscribe(event string, cb eventHandler) (float64, erro
 	}
 	req["params"] = reqparams
 	res := <-elem.connection.Request(req)
-	handlerId := res.Result["Value"]
+	handlerId := res.Result["Value"].(string)
 	if debug {
 		log.Println("Subscribe response handlerId ", handlerId)
 	}
@@ -120,7 +123,11 @@ func (elem *MediaObject) Subscribe(event string, cb eventHandler) (float64, erro
 	elem.connection.Subscribe(event, elem.String(), handlerId, cb)
 
 	// pass back the token so can be unregistered
-	return handlerId, res.Error
+	if res.Error != nil {
+		return handlerId, fmt.Errorf("[%d] %s %s", res.Error.Code, res.Error.Message, res.Error.Data)
+	}
+
+	return handlerId, nil
 }
 
 // Create an object in memory that represents a remote object without creating it

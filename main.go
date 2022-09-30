@@ -82,26 +82,34 @@ func (elem *{{$name}}) {{ .Name | title }}({{ template "Arguments" .}}) ({{if .R
 	response := <- elem.connection.Request(req)
 	{{ if .Return}}
 	{{ .Return.doc }}
+	var err error
+	if response.Error != nil {
+		err = fmt.Errorf("[%d] %s %s", response.Error.Code, response.Error.Message, response.Error.Data)
+	}
+
 		{{ if eq .Return.type "string" "int" "int64" "float64" "bool" }}
 	if value, ok := response.Result["value"].({{ .Return.type }}); ok {
-		return value, response.Error
+		return value, err
 	}
 			{{ if eq .Return.type "int" "int64" "float64" }}
-	return 0, response.Error
+	return 0, err
 			{{ end }}
 			{{ if eq .Return.type "string" }}
-	return "", response.Error
+	return "", err
 			{{ end }}
 			{{ if eq .Return.type "bool" }}
-	return false, response.Error
+	return false, err
 			{{ end }}
 		{{ else }}{{/* More complicated but... let's go */}}
 	ret := {{ .Return.type }}{}
-	return ret, response.Error
+	return ret, err
 		{{ end }}
 	{{ else }}
 	// Returns error or nil
-	return response.Error
+	if response.Error != nil {
+		return fmt.Errorf("[%d] %s %s", response.Error.Code, response.Error.Message, response.Error.Data)
+	}
+	return nil
 	{{end}}
 
 }

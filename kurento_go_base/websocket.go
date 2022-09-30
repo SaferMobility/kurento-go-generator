@@ -2,7 +2,6 @@ package kurento
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 
 	"golang.org/x/net/websocket"
@@ -16,11 +15,6 @@ type Error struct {
 }
 
 const ConnectionLost = -1
-
-// Implements error built-in interface
-func (e *Error) Error() string {
-	return fmt.Sprintf("[%d] %s %s", e.Code, e.Message, e.Data)
-}
 
 // Response represents server response
 type Response struct {
