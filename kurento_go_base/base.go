@@ -26,6 +26,8 @@ type IMediaObject interface {
 	// Those options are sent to getConstructorParams
 	Create(IMediaObject, map[string]interface{}) error
 
+	Release() error
+
 	// Set ID of the element
 	setId(string)
 
