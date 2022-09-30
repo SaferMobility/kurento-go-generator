@@ -24,7 +24,7 @@ type IMediaObject interface {
 
 	// Each media object should be able to create another object
 	// Those options are sent to getConstructorParams
-	Create(IMediaObject, map[string]interface{})
+	Create(IMediaObject, map[string]interface{}) error
 
 	// Set ID of the element
 	setId(string)
@@ -39,7 +39,7 @@ type IMediaObject interface {
 }
 
 // Create object "m" with given "options"
-func (elem *MediaObject) Create(m IMediaObject, options map[string]interface{}) {
+func (elem *MediaObject) Create(m IMediaObject, options map[string]interface{}) error {
 	req := elem.getCreateRequest()
 	constparams := m.getConstructorParams(elem, options)
 	// TODO params["sessionId"]
@@ -66,21 +66,38 @@ func (elem *MediaObject) Create(m IMediaObject, options map[string]interface{}) 
 		log.Println("Oncreate response: ", res)
 	}
 
-	if res.Result["value"] != "" {
-		elem.addChild(m)
-		//m.setParent(elem)
-		if value, ok := res.Result["value"].(string); ok {
+	if res.Error == nil {
+		if value, ok := res.Result["value"].(string); ok && value != "" {
+			elem.addChild(m)
+			//m.setParent(elem)
 			m.setId(value)
 		}
 	}
+
+	return res.Error
+}
+
+func (elem *MediaObject) Release() error {
+	// Make API call to register
+	req := elem.getReleaseRequest()
+	reqparams := map[string]interface{}{
+		"object": elem.String(),
+	}
+	if elem.connection.SessionId != "" {
+		reqparams["sessionId"] = elem.connection.SessionId
+	}
+	req["params"] = reqparams
+	res := <-elem.connection.Request(req)
+	if debug {
+		log.Println("Release response ", res)
+	}
+
+	return res.Error
 }
 
 type eventHandler func(map[string]interface{})
 
 func (elem *MediaObject) Subscribe(event string, cb eventHandler) float64 {
-	// tell the connection about this registered event for this mediaId event combo
-	handlerId := elem.connection.Subscribe(event, cb)
-
 	// Make API call to register
 	req := elem.getSubscribeRequest()
 	reqparams := map[string]interface{}{
@@ -92,9 +109,13 @@ func (elem *MediaObject) Subscribe(event string, cb eventHandler) float64 {
 	}
 	req["params"] = reqparams
 	res := <-elem.connection.Request(req)
+	handlerId := res.Result["Value"]
 	if debug {
-		log.Println("Subscribe response ", res)
+		log.Println("Subscribe response handlerId ", handlerId)
 	}
+
+	// tell the connection about this registered event for this mediaId event combo
+	elem.connection.Subscribe(event, elem.String(), handlerId, cb)
 
 	// pass back the token so can be unregistered
 	return handlerId
@@ -135,6 +156,14 @@ func (m *MediaObject) getCreateRequest() map[string]interface{} {
 func (m *MediaObject) getInvokeRequest() map[string]interface{} {
 	req := m.getCreateRequest()
 	req["method"] = "invoke"
+
+	return req
+}
+
+// Build a prepared release request
+func (m *MediaObject) getReleaseRequest() map[string]interface{} {
+	req := m.getCreateRequest()
+	req["method"] = "release"
 
 	return req
 }

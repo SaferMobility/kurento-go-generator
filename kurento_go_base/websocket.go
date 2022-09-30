@@ -15,6 +15,8 @@ type Error struct {
 	Data    string
 }
 
+const ConnectionLost = -1
+
 // Implements error built-in interface
 func (e *Error) Error() string {
 	return fmt.Sprintf("[%d] %s %s", e.Code, e.Message, e.Data)
@@ -42,7 +44,9 @@ type Connection struct {
 	host      string
 	ws        *websocket.Conn
 	SessionId string
-	events    map[string]map[float64]eventHandler // eventName -> handlerId -> handler.
+	events    map[string]map[string]map[string]eventHandler // eventName -> objectId -> handlerId -> handler.
+	Dead      chan bool
+	IsDead    bool
 }
 
 var connections = make(map[string]*Connection)
@@ -55,8 +59,10 @@ func NewConnection(host string) *Connection {
 	c := new(Connection)
 	connections[host] = c
 
-	c.events = make(map[string]map[float64]eventHandler)
+	c.events = make(map[string]map[string]map[string]eventHandler)
 	c.clients = make(map[float64]chan Response)
+	c.Dead = make(chan bool, 1)
+
 	var err error
 	c.ws, err = websocket.Dial(host+"/kurento", "", "http://127.0.0.1")
 	if err != nil {
@@ -67,10 +73,10 @@ func NewConnection(host string) *Connection {
 	return c
 }
 
-func (c *Connection) Create(m IMediaObject, options map[string]interface{}) {
+func (c *Connection) Create(m IMediaObject, options map[string]interface{}) error {
 	elem := &MediaObject{}
 	elem.setConnection(c)
-	elem.Create(m, options)
+	return elem.Create(m, options)
 }
 
 func (c *Connection) handleResponse() {
@@ -78,9 +84,17 @@ func (c *Connection) handleResponse() {
 		r := Response{}
 		ev := Event{}
 		var message string
-		websocket.Message.Receive(c.ws, &message)
+		err := websocket.Message.Receive(c.ws, &message)
+		if err != nil {
+			log.Printf("Error receiving on websocket %s", err)
+			c.IsDead = true
+			c.Dead <- true
+			break
+		}
 
-		log.Printf("RAW %s", message)
+		if debug {
+			log.Printf("RAW %s", message)
+		}
 
 		// Decode into both possible types. One should be valid
 		json.Unmarshal([]byte(message), &r)
@@ -117,11 +131,15 @@ func (c *Connection) handleResponse() {
 			}
 
 			t := val["type"].(string)
+			objectId := val["object"].(string)
+
 			data := val["data"].(map[string]interface{})
 
 			if handlers, ok := c.events[t]; ok {
-				for _, handler := range handlers {
-					handler(data)
+				if objHandlers, ok := handlers[objectId]; ok {
+					for _, handler := range objHandlers {
+						handler(data)
+					}
 				}
 			}
 		} else {
@@ -132,6 +150,19 @@ func (c *Connection) handleResponse() {
 }
 
 func (c *Connection) Request(req map[string]interface{}) <-chan Response {
+	if c.IsDead {
+		errchan := make(chan Response, 1)
+		errresp := Response{
+			Id: req["id"].(float64),
+			Error: &Error{
+				Code:    ConnectionLost,
+				Message: "No connection to Kurento server",
+			},
+		}
+		errchan <- errresp
+		return errchan
+	}
+
 	c.clientId++
 	req["id"] = c.clientId
 	if c.SessionId != "" {
@@ -142,31 +173,58 @@ func (c *Connection) Request(req map[string]interface{}) <-chan Response {
 		j, _ := json.MarshalIndent(req, "", "    ")
 		log.Println("json", string(j))
 	}
-	websocket.JSON.Send(c.ws, req)
+	err := websocket.JSON.Send(c.ws, req)
+	if err != nil {
+		log.Printf("Error sending on websocket %s", err)
+		c.Dead <- true
+		c.IsDead = true
+
+		delete(c.clients, c.clientId)
+
+		errchan := make(chan Response, 1)
+		errresp := Response{
+			Id: req["id"].(float64),
+			Error: &Error{
+				Code:    ConnectionLost,
+				Message: "No connection to Kurento server",
+			},
+		}
+
+		errchan <- errresp
+		return errchan
+	}
 	return c.clients[c.clientId]
 }
 
-func (c *Connection) Subscribe(event string, handler eventHandler) float64 {
-	var registered map[float64]eventHandler
+func (c *Connection) Subscribe(event, objectId, handlerId string, handler eventHandler) {
+	var oh map[string]map[string]eventHandler
 	var ok bool
 
-	if registered, ok = c.events[event]; !ok {
-		c.events[event] = make(map[float64]eventHandler)
-		registered = c.events[event]
+	if oh, ok = c.events[event]; !ok {
+		c.events[event] = make(map[string]map[string]eventHandler)
+		oh = c.events[event]
 	}
 
-	eventId := c.eventId
-	c.eventId += 1
-	registered[eventId] = handler
-	return eventId
+	var he map[string]eventHandler
+	if he, ok = oh[objectId]; !ok {
+		oh[objectId] = make(map[string]eventHandler)
+		he = oh[objectId]
+	}
+
+	he[handlerId] = handler
 }
 
-func (c *Connection) Unsubscribe(event string, eventId float64) {
-	var registered map[float64]eventHandler
+func (c *Connection) Unsubscribe(event, objectId, handlerId string) {
+	var oh map[string]map[string]eventHandler
+	var he map[string]eventHandler
 	var ok bool
-	if registered, ok = c.events[event]; !ok {
+	if oh, ok = c.events[event]; !ok {
 		return // not found
 	}
 
-	delete(registered, eventId)
+	if he, ok = oh[objectId]; !ok {
+		return // not found
+	}
+
+	delete(he, handlerId)
 }
