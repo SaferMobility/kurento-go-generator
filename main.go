@@ -455,7 +455,12 @@ func main() {
 	// make same for each interfaces
 	getInterfaces()
 
-	// finish by putting base.go, websocket.go, and README.md
+	// copy base files
 	log.Println("Copying base files")
 	gorecurcopy.CopyDirectory("kurento_go_base", "kurento")
+
+	// copy LICENSE and NOTICE
+	// We use the ones from kms-core, but the ones from kms-elements are identical
+	gorecurcopy.Copy("kms-core/LICENSE", "kurento/LICENSE")
+	gorecurcopy.Copy("kms-core/NOTICE", "kurento/NOTICE")
 }
