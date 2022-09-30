@@ -2,6 +2,7 @@ package kurento
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 
@@ -56,9 +57,9 @@ type threadsafeSubscriberMap struct {
 
 var connections = make(map[string]*Connection)
 
-func NewConnection(host string) *Connection {
+func NewConnection(host string) (*Connection, error) {
 	if connections[host] != nil {
-		return connections[host]
+		return connections[host], nil
 	}
 
 	c := new(Connection)
@@ -75,11 +76,11 @@ func NewConnection(host string) *Connection {
 	var err error
 	c.ws, err = websocket.Dial(host+"/kurento", "", "http://127.0.0.1")
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("kurento: error dialing: %w", err)
 	}
 	c.host = host
 	go c.handleResponse()
-	return c
+	return c, nil
 }
 
 func (c *Connection) Create(m IMediaObject, options map[string]interface{}) error {
