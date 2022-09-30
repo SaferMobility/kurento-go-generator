@@ -3,6 +3,7 @@ package kurento
 import (
 	"encoding/json"
 	"log"
+	"sync"
 
 	"golang.org/x/net/websocket"
 )
@@ -34,13 +35,23 @@ type Event struct {
 type Connection struct {
 	clientId  float64
 	eventId   float64
-	clients   map[float64]chan Response
+	clients   threadsafeClientMap
 	host      string
 	ws        *websocket.Conn
 	SessionId string
-	events    map[string]map[string]map[string]eventHandler // eventName -> objectId -> handlerId -> handler.
+	events    threadsafeSubscriberMap
 	Dead      chan bool
 	IsDead    bool
+}
+
+type threadsafeClientMap struct {
+	clients map[float64]chan Response
+	lock    sync.RWMutex
+}
+
+type threadsafeSubscriberMap struct {
+	subscribers map[string]map[string]map[string]eventHandler // eventName -> objectId -> handlerId -> handler.
+	lock        sync.RWMutex
 }
 
 var connections = make(map[string]*Connection)
@@ -53,8 +64,12 @@ func NewConnection(host string) *Connection {
 	c := new(Connection)
 	connections[host] = c
 
-	c.events = make(map[string]map[string]map[string]eventHandler)
-	c.clients = make(map[float64]chan Response)
+	c.events = threadsafeSubscriberMap{
+		subscribers: make(map[string]map[string]map[string]eventHandler),
+	}
+	c.clients = threadsafeClientMap{
+		clients: make(map[float64]chan Response),
+	}
 	c.Dead = make(chan bool, 1)
 
 	var err error
@@ -71,6 +86,10 @@ func (c *Connection) Create(m IMediaObject, options map[string]interface{}) erro
 	elem := &MediaObject{}
 	elem.setConnection(c)
 	return elem.Create(m, options)
+}
+
+func (c *Connection) Close() error {
+	return c.ws.Close()
 }
 
 func (c *Connection) handleResponse() {
@@ -91,15 +110,16 @@ func (c *Connection) handleResponse() {
 		}
 
 		// Decode into both possible types. One should be valid
-		json.Unmarshal([]byte(message), &r)
-		json.Unmarshal([]byte(message), &ev)
+		_ = json.Unmarshal([]byte(message), &r)
+		_ = json.Unmarshal([]byte(message), &ev)
 
 		isResponse := r.Id > 0 && r.Result != nil
 		isEvent := ev.Method == "onEvent"
 
 		//websocket.JSON.Receive(c.ws, &r)
 		if isResponse {
-			if sessionID, ok := r.Result["sessionId"].(string); ok && sessionID != "" {
+			// If sessionId has been set/changed, save the new one
+			if sessionID, ok := r.Result["sessionId"].(string); ok && sessionID != "" && c.SessionId != sessionID {
 				if debug {
 					log.Println("sessionId returned ", r.Result["sessionId"])
 				}
@@ -108,11 +128,18 @@ func (c *Connection) handleResponse() {
 			if debug {
 				log.Printf("Response: %v", r)
 			}
-			// if webscocket client exists, send response to the chanel
-			if c.clients[r.Id] != nil {
-				c.clients[r.Id] <- r
+			// if webscocket client exists, send response to the channel
+			c.clients.lock.RLock()
+			c.events.lock.RLock()
+			defer c.clients.lock.RUnlock()
+			defer c.events.lock.RUnlock()
+			if c.clients.clients[r.Id] != nil {
+				c.clients.clients[r.Id] <- r
 				// chanel is read, we can delete it
-				delete(c.clients, r.Id)
+				c.clients.lock.Lock()
+				defer c.clients.lock.Unlock()
+				close(c.clients.clients[r.Id])
+				delete(c.clients.clients, r.Id)
 			} else if debug {
 				log.Println("Dropped message because there is no client ", r.Id)
 				log.Println(r)
@@ -129,7 +156,7 @@ func (c *Connection) handleResponse() {
 
 			data := val["data"].(map[string]interface{})
 
-			if handlers, ok := c.events[t]; ok {
+			if handlers, ok := c.events.subscribers[t]; ok {
 				if objHandlers, ok := handlers[objectId]; ok {
 					for _, handler := range objHandlers {
 						handler(data)
@@ -144,6 +171,9 @@ func (c *Connection) handleResponse() {
 }
 
 func (c *Connection) Request(req map[string]interface{}) <-chan Response {
+	c.clients.lock.Lock()
+	defer c.clients.lock.Unlock()
+
 	if c.IsDead {
 		errchan := make(chan Response, 1)
 		errresp := Response{
@@ -162,7 +192,7 @@ func (c *Connection) Request(req map[string]interface{}) <-chan Response {
 	if c.SessionId != "" {
 		req["sessionId"] = c.SessionId
 	}
-	c.clients[c.clientId] = make(chan Response)
+	c.clients.clients[c.clientId] = make(chan Response)
 	if debug {
 		j, _ := json.MarshalIndent(req, "", "    ")
 		log.Println("json", string(j))
@@ -173,7 +203,7 @@ func (c *Connection) Request(req map[string]interface{}) <-chan Response {
 		c.Dead <- true
 		c.IsDead = true
 
-		delete(c.clients, c.clientId)
+		delete(c.clients.clients, c.clientId)
 
 		errchan := make(chan Response, 1)
 		errresp := Response{
@@ -187,16 +217,19 @@ func (c *Connection) Request(req map[string]interface{}) <-chan Response {
 		errchan <- errresp
 		return errchan
 	}
-	return c.clients[c.clientId]
+	return c.clients.clients[c.clientId]
 }
 
 func (c *Connection) Subscribe(event, objectId, handlerId string, handler eventHandler) {
 	var oh map[string]map[string]eventHandler
 	var ok bool
 
-	if oh, ok = c.events[event]; !ok {
-		c.events[event] = make(map[string]map[string]eventHandler)
-		oh = c.events[event]
+	c.events.lock.Lock()
+	defer c.events.lock.Unlock()
+
+	if oh, ok = c.events.subscribers[event]; !ok {
+		c.events.subscribers[event] = make(map[string]map[string]eventHandler)
+		oh = c.events.subscribers[event]
 	}
 
 	var he map[string]eventHandler
@@ -212,7 +245,11 @@ func (c *Connection) Unsubscribe(event, objectId, handlerId string) {
 	var oh map[string]map[string]eventHandler
 	var he map[string]eventHandler
 	var ok bool
-	if oh, ok = c.events[event]; !ok {
+
+	c.events.lock.Lock()
+	defer c.events.lock.Unlock()
+
+	if oh, ok = c.events.subscribers[event]; !ok {
 		return // not found
 	}
 
