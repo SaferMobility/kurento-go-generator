@@ -10,12 +10,8 @@ prep:
 
 build:
 	go run main.go
-	# Because I don't find os.ModeXXX to use when I create files...
-	cp kurento_go_base/README.md kurento/
-	chmod -R a-x kurento/*.go
 
 format:
-	cp kurento_go_base/*.go kurento/
 	goimports -w ./kurento
 
 test:

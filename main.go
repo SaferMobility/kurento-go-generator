@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+
+	"github.com/plus3it/gorecurcopy"
 )
 
 const strTemplate = `
@@ -461,9 +463,7 @@ func main() {
 	// make same for each interfaces
 	getInterfaces()
 
-	// finish by putting base.go
-	data, _ := ioutil.ReadFile("kurento_go_base/base.go")
-	// Write data to dst
-	ioutil.WriteFile("kurento/base.go", data, os.ModePerm)
-
+	// finish by putting base.go, websocket.go, and README.md
+	log.Println("Copying base files")
+	gorecurcopy.CopyDirectory("kurento_go_base", "kurento")
 }
