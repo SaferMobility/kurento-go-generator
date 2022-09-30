@@ -121,6 +121,16 @@ func (elem *MediaObject) Subscribe(event string, cb eventHandler) (float64, erro
 	return handlerId, res.Error
 }
 
+// Create an object in memory that represents a remote object without creating it
+func HydrateMediaObject(id string, parent IMediaObject, c *Connection, elem IMediaObject) error {
+	elem.setConnection(c)
+	elem.setId(id)
+	if parent != nil {
+		parent.addChild(elem)
+	}
+	return nil
+}
+
 // Implement setConnection that allows element to handle connection
 func (elem *MediaObject) setConnection(c *Connection) {
 	elem.connection = c
