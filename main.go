@@ -407,7 +407,6 @@ func parse(c []class) []string {
 func parseComplexTypes() {
 	paths, _ := filepath.Glob(ELEMENTS + "elements.*.kmd.json")
 	paths = append(paths, CORE)
-	ret := make([]string, 0)
 	for _, path := range paths {
 		ctypes := getModel(path).ComplexTypes
 		for _, ctype := range ctypes {
@@ -423,21 +422,25 @@ func parseComplexTypes() {
 			buff := bytes.NewBufferString("")
 			tpl, _ := template.New("complexttypes").Funcs(funcMap).Parse(complexTypeTemplate)
 			tpl.Execute(buff, ctype)
-			ret = append(ret, buff.String())
+			filename := fmt.Sprintf("kurento/complexTypes_%s.go", ctype.Name)
+			log.Printf("Writing %s", filename)
+			writeOneFile(filename, buff.String())
 		}
 	}
-	writeFile("kurento/complexTypes.go", ret)
-
 }
 
-func writeFile(path string, classes []string) {
-	content := strings.Join(classes, "\n")
+func writeOneFile(path string, content string) {
 	tpl, _ := template.New("package").Parse(packageTemplate)
 	buff := bytes.NewBufferString("")
 	tpl.Execute(buff, map[string]string{
 		"Content": content,
 	})
 	ioutil.WriteFile(path, buff.Bytes(), os.ModePerm)
+}
+
+func writeFile(path string, classes []string) {
+	content := strings.Join(classes, "\n")
+	writeOneFile(path, content)
 }
 
 func main() {
