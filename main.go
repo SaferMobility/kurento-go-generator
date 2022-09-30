@@ -40,7 +40,7 @@ func (elem *{{.Name}}) getConstructorParams(from IMediaObject, options map[strin
 	{{ if len .Constructor.Params }}
 	// Create basic constructor params
 	ret := map[string]interface{} {
-		{{ range .Constructor.Params }}{{ if eq .type "string" "float64" "bool" "int" }}"{{ .name }}" : {{ .defaultValue }},
+		{{ range .Constructor.Params }}{{ if eq .type "string" "float64" "bool" "int" "int64" }}"{{ .name }}" : {{ .defaultValue }},
 		{{ else }} "{{ .name }}" : fmt.Sprintf("%s", from),
 		{{ end }}{{ end }}
 	}
@@ -80,24 +80,26 @@ func (elem *{{$name}}) {{ .Name | title }}({{ template "Arguments" .}}) ({{if .R
 	response := <- elem.connection.Request(req)
 	{{ if .Return}}
 	{{ .Return.doc }}
-		{{ if eq .Return.type "string" "int" "float64" "boolean" }}
-		if response.Error == nil {
-			return response.Result["value"], nil
-		} else {
-			return response.Result["value"], response.Error
-		}
-	return response.Result["value"], response.Error
+		{{ if eq .Return.type "string" "int" "int64" "float64" "bool" }}
+	if value, ok := response.Result["value"].({{ .Return.type }}); ok {
+		return value, response.Error
+	}
+			{{ if eq .Return.type "int" "int64" "float64" }}
+	return 0, response.Error
+			{{ end }}
+			{{ if eq .Return.type "string" }}
+	return "", response.Error
+			{{ end }}
+			{{ if eq .Return.type "bool" }}
+	return false, response.Error
+			{{ end }}
 		{{ else }}{{/* More complicated but... let's go */}}
 	ret := {{ .Return.type }}{}
 	return ret, response.Error
 		{{ end }}
 	{{ else }}
 	// Returns error or nil
-	if response.Error != nil {
-		return response.Error
-	} else {
-		return nil
-	}
+	return response.Error
 	{{end}}
 
 }
@@ -226,9 +228,9 @@ var funcMap = template.FuncMap{
 
 		ctype := isComplexType(t)
 		switch t {
-		case "float64", "int":
+		case "float64", "int", "int64":
 			return fmt.Sprintf("\"%s\" = %s", name, name)
-		case "string", "boolean":
+		case "string", "bool":
 			return fmt.Sprintf("\"%s\" = %s", name, name)
 		default:
 			// If param is not complexType, we have Id from String() method
@@ -317,7 +319,7 @@ func formatTypes(p map[string]interface{}) map[string]interface{} {
 			p["defaultValue"] = `""`
 		case "bool":
 			p["defaultValue"] = "false"
-		case "int", "float64":
+		case "int", "int64", "float64":
 			p["defaultValue"] = "0"
 		}
 	}
@@ -359,7 +361,7 @@ func parse(c []class) []string {
 		for j, p := range cl.Properties {
 			p = formatTypes(p)
 			switch p["type"] {
-			case "string", "float64", "int", "bool", "[]string":
+			case "string", "float64", "int", "int64", "bool", "[]string":
 			default:
 				if _, ok := p["type"].(string); ok {
 					if p["type"].(string)[:2] == "[]" {

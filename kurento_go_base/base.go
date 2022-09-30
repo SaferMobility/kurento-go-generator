@@ -69,7 +69,9 @@ func (elem *MediaObject) Create(m IMediaObject, options map[string]interface{}) 
 	if res.Result["value"] != "" {
 		elem.addChild(m)
 		//m.setParent(elem)
-		m.setId(res.Result["value"])
+		if value, ok := res.Result["value"].(string); ok {
+			m.setId(value)
+		}
 	}
 }
 

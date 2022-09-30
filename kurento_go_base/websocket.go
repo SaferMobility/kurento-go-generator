@@ -24,7 +24,7 @@ func (e *Error) Error() string {
 type Response struct {
 	Jsonrpc string
 	Id      float64
-	Result  map[string]string // should change if result has no several form
+	Result  map[string]interface{}
 	Error   *Error
 }
 
@@ -91,11 +91,11 @@ func (c *Connection) handleResponse() {
 
 		//websocket.JSON.Receive(c.ws, &r)
 		if isResponse {
-			if r.Result["sessionId"] != "" {
+			if sessionID, ok := r.Result["sessionId"].(string); ok && sessionID != "" {
 				if debug {
 					log.Println("sessionId returned ", r.Result["sessionId"])
 				}
-				c.SessionId = r.Result["sessionId"]
+				c.SessionId = sessionID
 			}
 			if debug {
 				log.Printf("Response: %v", r)
