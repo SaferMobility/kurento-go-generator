@@ -145,6 +145,8 @@ func (t {{.Name}}) CustomSerialize() map[string]interface{} {
 	{{range .Properties}}
 	ret["{{.name}}"] = t.{{.name | title}}
 	{{end}}
+	ret["__type__"] = "IceCandidate"
+	ret["__module__"] = "kurento"
 	return ret
 }
 {{ end }}
