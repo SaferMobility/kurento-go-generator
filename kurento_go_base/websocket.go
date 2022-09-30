@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"sync"
+	"time"
 
 	"golang.org/x/net/websocket"
 )
@@ -74,7 +76,12 @@ func NewConnection(host string) (*Connection, error) {
 	c.Dead = make(chan bool, 1)
 
 	var err error
-	c.ws, err = websocket.Dial(host+"/kurento", "", "http://127.0.0.1")
+	conf, err := websocket.NewConfig(host+"/kurento", "http://127.0.0.1")
+	if err != nil {
+		return nil, fmt.Errorf("kurento: error creating new config: %v", err)
+	}
+	conf.Dialer = &net.Dialer{Timeout: 5 * time.Second}
+	c.ws, err = websocket.DialConfig(conf)
 	if err != nil {
 		return nil, fmt.Errorf("kurento: error dialing: %w", err)
 	}
