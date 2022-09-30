@@ -252,31 +252,10 @@ func formatDoc(doc string) string {
 	doc = strings.Replace(doc, "``", `"`, -1)
 
 	lines := strings.Split(doc, "\n")
-	part := make([]string, 0)
-	for _, line := range lines {
-		if len(strings.TrimSpace(line)) == 0 {
-			continue
-		}
-		// if line is too long, cut !
-		if len(line) > DOCLINELENGTH {
-			pos := DOCLINELENGTH
-			for len(line) > DOCLINELENGTH {
-				// find previous space
-				for i := pos; line[pos] != ' '; i-- {
-					pos = i
-				}
-				part = append(part, line[:pos])
-				line = line[pos:]
-			}
-		}
-		// then append remaining line
-		part = append(part, line)
+	for i, line := range lines {
+		lines[i] = "// " + strings.TrimSpace(line)
 	}
-
-	for i, p := range part {
-		part[i] = "// " + strings.TrimSpace(p)
-	}
-	ret := strings.Join(part, "\n")
+	ret := strings.Join(lines, "\n")
 	return ret
 }
 
