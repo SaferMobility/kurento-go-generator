@@ -97,7 +97,7 @@ func (elem *MediaObject) Release() error {
 
 type eventHandler func(map[string]interface{})
 
-func (elem *MediaObject) Subscribe(event string, cb eventHandler) float64 {
+func (elem *MediaObject) Subscribe(event string, cb eventHandler) (float64, error) {
 	// Make API call to register
 	req := elem.getSubscribeRequest()
 	reqparams := map[string]interface{}{
@@ -118,7 +118,7 @@ func (elem *MediaObject) Subscribe(event string, cb eventHandler) float64 {
 	elem.connection.Subscribe(event, elem.String(), handlerId, cb)
 
 	// pass back the token so can be unregistered
-	return handlerId
+	return handlerId, res.Error
 }
 
 // Implement setConnection that allows element to handle connection
