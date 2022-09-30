@@ -57,15 +57,8 @@ type threadsafeSubscriberMap struct {
 	lock        sync.RWMutex
 }
 
-var connections = make(map[string]*Connection)
-
 func NewConnection(host string) (*Connection, error) {
-	if connections[host] != nil {
-		return connections[host], nil
-	}
-
 	c := new(Connection)
-	connections[host] = c
 
 	c.events = threadsafeSubscriberMap{
 		subscribers: make(map[string]map[string]map[string]eventHandler),
