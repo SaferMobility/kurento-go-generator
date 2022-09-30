@@ -1,3 +1,8 @@
 *.swp
 kurento
 kurento/*
+/fix-kurento-json/build/
+/fix-kurento-json/.idea/
+/fix-kurento-json/.gradle/
+/kms-core-valid-json/*.json
+/kms-elements-valid-json/*.json

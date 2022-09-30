@@ -194,8 +194,8 @@ type ComplexType struct {
 }
 
 const (
-	CORE     = "kms-core/src/server/interface/core.kmd.json"
-	ELEMENTS = "kms-elements/src/server/interface/"
+	CORE     = "kms-core-valid-json/core.kmd.json"
+	ELEMENTS = "kms-elements-valid-json/"
 )
 
 // template func that change MediaXXX to IMediaXXX to
@@ -335,7 +335,7 @@ func getModel(path string) core {
 	data, _ := ioutil.ReadFile(path)
 	err := json.Unmarshal(data, &i)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(fmt.Errorf("unable to parse %s: %w", path, err))
 	}
 	return i
 }
@@ -416,7 +416,7 @@ func parse(c []class) []string {
 }
 
 func parseComplexTypes() {
-	paths, _ := filepath.Glob("kms-elements/src/server/interface/elements.*.kmd.json")
+	paths, _ := filepath.Glob(ELEMENTS + "elements.*.kmd.json")
 	paths = append(paths, CORE)
 	ret := make([]string, 0)
 	for _, path := range paths {
