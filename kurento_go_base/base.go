@@ -209,7 +209,11 @@ func getMediaElementType(i interface{}) string {
 
 func mergeOptions(a, b map[string]interface{}) {
 	for key, val := range b {
-		a[key] = val
+		if val == nil {
+			delete(a, key)
+		} else {
+			a[key] = val
+		}
 	}
 }
 
